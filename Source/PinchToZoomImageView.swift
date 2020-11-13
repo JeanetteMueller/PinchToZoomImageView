@@ -21,19 +21,26 @@ open class PinchToZoomImageView: UIImageView {
      while pinching/panning/rotating.
      */
     fileprivate var imageViewCopy = UIImageView(frame: .zero)
-
+    
     // MARK: Gesture Recognizers
     
     fileprivate var pinchGestureRecognizer: UIPinchGestureRecognizer?
     fileprivate var panGestureRecognizer: UIPanGestureRecognizer?
     fileprivate var rotateGestureRecognizer: UIRotationGestureRecognizer?
-    
+    fileprivate var tapGestureRecognizerOverlay: UITapGestureRecognizer?
+    fileprivate var tapGestureRecognizerImage: UITapGestureRecognizer?
     /**
      Internal property to determine if the PinchToZoomImageView is currently
      resetting. Helps to prevent duplicate resets simultaneously.
      */
     fileprivate var isResetting = false
-
+    
+    var isRotateable = false {
+        didSet {
+            self.rotateGestureRecognizer?.isEnabled = isRotateable
+        }
+    }
+    
     /**
      Whether or not the image view is pinchable.
      Set this to `false` in order to completely disable pinching/panning/rotating
@@ -57,7 +64,7 @@ open class PinchToZoomImageView: UIImageView {
         }
     }
     
-    open override var contentMode: UIViewContentMode {
+    open override var contentMode: UIView.ContentMode {
         didSet {
             imageViewCopy.contentMode = contentMode
         }
@@ -107,7 +114,7 @@ open class PinchToZoomImageView: UIImageView {
     // MARK: Init
     
     private func commonInit() {
-        overlayView.backgroundColor = .white
+        overlayView.backgroundColor = .black
         overlayView.alpha = 0.0
         isUserInteractionEnabled = true
         imageViewCopy.isUserInteractionEnabled = true
@@ -122,7 +129,16 @@ open class PinchToZoomImageView: UIImageView {
         
         rotateGestureRecognizer = UIRotationGestureRecognizer(target: self, action: #selector(didRotateImage(_:)))
         rotateGestureRecognizer?.delegate = self
+        rotateGestureRecognizer?.isEnabled = self.isRotateable
         addGestureRecognizer(rotateGestureRecognizer!)
+        
+        tapGestureRecognizerImage = UITapGestureRecognizer(target: self, action: #selector(didTapImage(_:)))
+        tapGestureRecognizerImage?.delegate = self
+        addGestureRecognizer(tapGestureRecognizerImage!)
+        
+        tapGestureRecognizerOverlay = UITapGestureRecognizer(target: self, action: #selector(didTapImage(_:)))
+        tapGestureRecognizerOverlay?.delegate = self
+        overlayView.addGestureRecognizer(tapGestureRecognizerOverlay!)
         
         imageViewCopy.image = image
         imageViewCopy.contentMode = contentMode
@@ -187,6 +203,7 @@ open class PinchToZoomImageView: UIImageView {
     private func moveImageViewCopyToWindow() {
         let window = UIApplication.shared.keyWindow
         imageViewCopy.translatesAutoresizingMaskIntoConstraints = true
+        
         imageViewCopy.frame = superview?.convert(frame, to: window) ?? .zero
         overlayView.frame = window?.frame ?? .zero
         
@@ -207,8 +224,8 @@ open class PinchToZoomImageView: UIImageView {
         
         UIView.animate(withDuration: 0.3, animations: { [weak self] in
             guard let weakSelf = self,
-                let window = UIApplication.shared.keyWindow else {
-                    return
+                  let window = UIApplication.shared.keyWindow else {
+                return
             }
             
             weakSelf.overlayView.alpha = 0.0
@@ -231,12 +248,12 @@ open class PinchToZoomImageView: UIImageView {
         isResetting = false
         imageViewCopyScale = 1.0
     }
-
+    
     // MARK: Gesture Recognizer handlers
-
+    
     @objc private func didPinchImage(_ recognizer: UIPinchGestureRecognizer) {
         guard recognizer.state != .ended else {
-            reset()
+            //reset()
             return
         }
         
@@ -260,13 +277,39 @@ open class PinchToZoomImageView: UIImageView {
         }
         
         guard recognizer.state != .ended else {
-            reset()
+            //reset()
             return
         }
         
         let translation = recognizer.translation(in: imageViewCopy.superview)
         let originalCenter = imageViewCopy.center
-        let translatedCenter = CGPoint(x: originalCenter.x + translation.x, y: originalCenter.y + translation.y)
+        
+        var newX = originalCenter.x + translation.x
+        
+        if imageViewCopy.frame.size.width > overlayView.frame.size.width {
+            if newX - (imageViewCopy.frame.size.width / 2) > 0 {
+                newX = (imageViewCopy.frame.size.width / 2)
+            }else if newX < -(imageViewCopy.frame.size.width / 2 - overlayView.frame.size.width) {
+                newX = -(imageViewCopy.frame.size.width / 2 - overlayView.frame.size.width)
+            }
+        }else{
+            newX = overlayView.frame.size.width / 2
+        }
+        
+        var newY = originalCenter.y + translation.y
+        
+        if imageViewCopy.frame.size.height > overlayView.frame.size.height{
+            if newY - (imageViewCopy.frame.size.height / 2) > 0 {
+                newY = (imageViewCopy.frame.size.height / 2)
+            }else if newY < -(imageViewCopy.frame.size.height / 2 - overlayView.frame.size.height) {
+                newY = -(imageViewCopy.frame.size.height / 2 - overlayView.frame.size.height)
+            }
+        }else{
+            newY = overlayView.frame.size.height / 2
+        }
+        
+        let translatedCenter = CGPoint(x: newX, y: newY)
+        
         imageViewCopy.center = translatedCenter
         recognizer.setTranslation(.zero, in: imageViewCopy)
     }
@@ -283,6 +326,10 @@ open class PinchToZoomImageView: UIImageView {
         
         recognizer.view?.transform = recognizer.view?.transform.rotated(by: recognizer.rotation) ?? .identity
         recognizer.rotation = 0
+    }
+    @objc private func didTapImage(_ recognizer: UITapGestureRecognizer) {
+        
+        reset()
     }
 }
 
